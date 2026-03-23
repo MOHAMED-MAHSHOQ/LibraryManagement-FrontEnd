@@ -36,6 +36,9 @@ export function useCreateStudent() {
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['students'] })
         },
+        onError: (error) => {
+            alert(error.message)
+        },
     })
 }
 
@@ -45,6 +48,9 @@ export function useUpdateStudent() {
         mutationFn: ({ id, data }) => updateStudent(id, data),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['students'] })
+        },
+        onError: (error) => {
+            alert(error.message)
         },
     })
 }

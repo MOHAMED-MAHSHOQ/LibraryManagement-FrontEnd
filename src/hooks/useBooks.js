@@ -40,6 +40,9 @@ export function useCreateBook() {
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['books'] })
         },
+        onError: (error) => {
+            alert(error.message)
+        },
     })
 }
 
@@ -50,15 +53,20 @@ export function useUpdateBook() {
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['books'] })
         },
+        onError: (error) => {
+            alert(error.message)
+        },
     })
 }
-
 export function useDeleteBook() {
     const queryClient = useQueryClient()
     return useMutation({
         mutationFn: deleteBook,
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['books'] })
+        },
+        onError: (error) => {
+            alert(error.message)
         },
     })
 }
