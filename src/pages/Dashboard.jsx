@@ -1,20 +1,61 @@
-import { useStudents } from '../hooks/useStudents'
-import { useBooks } from '../hooks/useBooks'
+import { useQuery } from '@tanstack/react-query'
+import { getStudents } from '../api/students'
+import { getBooks } from '../api/books'
+import { getUnassignedBooks } from '../api/books'
 
 export default function Dashboard() {
-    const { students, isLoading: studentsLoading } = useStudents()
-    const { books, isLoading: booksLoading }       = useBooks()
+    // Fetch page 0 with size 1 just to get totalElements — cheap call
+    const { data: studentsData, isLoading: studentsLoading } = useQuery({
+        queryKey: ['students-summary'],
+        queryFn: () => getStudents({ page: 0, size: 1 }),
+        staleTime: 0,
+        refetchOnMount: 'always',
+    })
 
-    const assignedBooks   = books.filter(b => b.studentId)
-    const unassignedBooks = books.filter(b => !b.studentId)
-    const utilisation     = books.length > 0
-        ? Math.round((assignedBooks.length / books.length) * 100)
+    const { data: booksData, isLoading: booksLoading } = useQuery({
+        queryKey: ['books-summary'],
+        queryFn: () => getBooks({ page: 0, size: 1 }),
+        staleTime: 0,
+        refetchOnMount: 'always',
+    })
+
+    // Unassigned books — this endpoint returns ALL unassigned books (no pagination)
+    const { data: unassignedBooks = [], isLoading: unassignedLoading } = useQuery({
+        queryKey: ['books', 'unassigned'],
+        queryFn: getUnassignedBooks,
+        staleTime: 0,
+        refetchOnMount: 'always',
+    })
+
+    // We need department breakdown — fetch a larger page for dashboard stats
+    const { data: studentsAllData } = useQuery({
+        queryKey: ['students-departments'],
+        queryFn: () => getStudents({ page: 0, size: 200 }),
+        staleTime: 0,
+        refetchOnMount: 'always',
+    })
+
+    const { data: booksAllData } = useQuery({
+        queryKey: ['books-genres'],
+        queryFn: () => getBooks({ page: 0, size: 200 }),
+        staleTime: 0,
+        refetchOnMount: 'always',
+    })
+
+    const totalStudents   = studentsData?.totalElements || 0
+    const totalBooks      = booksData?.totalElements    || 0
+    const assignedCount   = totalBooks - unassignedBooks.length
+    const utilisation     = totalBooks > 0
+        ? Math.round((assignedCount / totalBooks) * 100)
         : 0
 
-    const departments = [...new Set(students.map(s => s.department))]
-    const genres      = [...new Set(books.map(b => b.genre))]
+    const sampleStudents = studentsAllData?.content || []
+    const sampleBooks    = booksAllData?.content    || []
 
-    if (studentsLoading || booksLoading) return (
+    const departments = [...new Set(sampleStudents.map(s => s.department))]
+    const genres      = [...new Set(sampleBooks.map(b => b.genre))]
+
+    if (studentsLoading || booksLoading || unassignedLoading) return (
         <div style={{ color: '#9ca3af', padding: '40px', textAlign: 'center' }}>
             Loading dashboard...
         </div>
@@ -31,6 +72,7 @@ export default function Dashboard() {
                 </p>
             </div>
 
+            {/* Stat cards */}
             <div style={{
                 display: 'grid',
                 gridTemplateColumns: 'repeat(4, 1fr)',
@@ -40,19 +82,19 @@ export default function Dashboard() {
                 {[
                     {
                         label: 'Total students',
-                        value: students.length,
-                        sub: `${departments.length} departments`,
+                        value: totalStudents,
+                        sub: `${departments.length}+ departments`,
                         color: '#818cf8',
                     },
                     {
                         label: 'Total books',
-                        value: books.length,
-                        sub: `${genres.length} genres`,
+                        value: totalBooks,
+                        sub: `${genres.length}+ genres`,
                         color: '#34d399',
                     },
                     {
                         label: 'Assigned books',
-                        value: assignedBooks.length,
+                        value: assignedCount,
                         sub: `${utilisation}% utilisation`,
                         color: '#60a5fa',
                     },
@@ -102,11 +144,14 @@ export default function Dashboard() {
                 gridTemplateColumns: '1fr 1fr',
                 gap: '16px',
             }}>
+                {/* Students by department */}
                 <div style={{
                     backgroundColor: '#1a1a2e',
                     border: '1px solid #2a2a4e',
                     borderRadius: '10px',
                     padding: '16px 20px',
+                    overflowY: 'auto',
+                    maxHeight: '500px',
                 }}>
                     <h2 style={{
                         fontSize: '13px',
@@ -117,44 +162,60 @@ export default function Dashboard() {
                         marginBottom: '16px',
                     }}>
                         Students by department
+                        {totalStudents > 200 && (
+                            <span style={{ fontSize: '10px', color: '#6b7280', marginLeft: '8px', fontWeight: 400 }}>
+                                (sample of first 200)
+                            </span>
+                        )}
                     </h2>
-                    {departments.map(dept => {
-                        const count = students.filter(s => s.department === dept).length
-                        const pct   = Math.round((count / students.length) * 100)
-                        return (
-                            <div key={dept} style={{ marginBottom: '12px' }}>
-                                <div style={{
-                                    display: 'flex',
-                                    justifyContent: 'space-between',
-                                    fontSize: '12px',
-                                    color: '#e5e7eb',
-                                    marginBottom: '4px',
-                                }}>
-                                    <span>{dept}</span>
-                                    <span style={{ color: '#6b7280' }}>{count} students</span>
-                                </div>
-                                <div style={{
-                                    height: '4px',
-                                    backgroundColor: '#2a2a4e',
-                                    borderRadius: '2px',
-                                }}>
+                    {departments.length === 0 ? (
+                        <div style={{ color: '#6b7280', fontSize: '13px', textAlign: 'center', padding: '20px 0' }}>
+                            No students yet
+                        </div>
+                    ) : (
+                        departments.map(dept => {
+                            const count = sampleStudents.filter(s => s.department === dept).length
+                            const pct   = sampleStudents.length > 0
+                                ? Math.round((count / sampleStudents.length) * 100)
+                                : 0
+                            return (
+                                <div key={dept} style={{ marginBottom: '12px' }}>
+                                    <div style={{
+                                        display: 'flex',
+                                        justifyContent: 'space-between',
+                                        fontSize: '12px',
+                                        color: '#e5e7eb',
+                                        marginBottom: '4px',
+                                    }}>
+                                        <span>{dept}</span>
+                                        <span style={{ color: '#6b7280' }}>{count} students</span>
+                                    </div>
                                     <div style={{
                                         height: '4px',
-                                        width: `${pct}%`,
-                                        backgroundColor: '#818cf8',
+                                        backgroundColor: '#2a2a4e',
                                         borderRadius: '2px',
-                                    }} />
+                                    }}>
+                                        <div style={{
+                                            height: '4px',
+                                            width: `${pct}%`,
+                                            backgroundColor: '#818cf8',
+                                            borderRadius: '2px',
+                                        }} />
+                                    </div>
                                 </div>
-                            </div>
-                        )
-                    })}
+                            )
+                        })
+                    )}
                 </div>
 
+                {/* Unassigned shelf */}
                 <div style={{
                     backgroundColor: '#1a1a2e',
                     border: '1px solid #2a2a4e',
                     borderRadius: '10px',
                     padding: '16px 20px',
+                    overflowY: 'auto',
+                    maxHeight: '500px',
                 }}>
                     <h2 style={{
                         fontSize: '13px',
@@ -165,6 +226,9 @@ export default function Dashboard() {
                         marginBottom: '16px',
                     }}>
                         Unassigned shelf
+                        <span style={{ fontSize: '11px', color: '#fb923c', marginLeft: '8px', fontWeight: 400 }}>
+                            ({unassignedBooks.length} books)
+                        </span>
                     </h2>
                     {unassignedBooks.length === 0 ? (
                         <div style={{
@@ -189,18 +253,10 @@ export default function Dashboard() {
                                 }}
                             >
                                 <div>
-                                    <div style={{
-                                        fontSize: '13px',
-                                        fontWeight: '500',
-                                        color: '#fff',
-                                    }}>
+                                    <div style={{ fontSize: '13px', fontWeight: '500', color: '#fff' }}>
                                         {book.title}
                                     </div>
-                                    <div style={{
-                                        fontSize: '11px',
-                                        color: '#6b7280',
-                                        marginTop: '2px',
-                                    }}>
+                                    <div style={{ fontSize: '11px', color: '#6b7280', marginTop: '2px' }}>
                                         {book.author}
                                     </div>
                                 </div>
@@ -211,9 +267,10 @@ export default function Dashboard() {
                                     color: '#4ade80',
                                     borderRadius: '20px',
                                     fontWeight: '500',
+                                    flexShrink: 0,
                                 }}>
-                  Free
-                </span>
+                                    Free
+                                </span>
                             </div>
                         ))
                     )}

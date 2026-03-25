@@ -9,7 +9,8 @@ const queryClient = new QueryClient({
     defaultOptions: {
         queries: {
             retry: 1,
-            staleTime: 30000
+            staleTime: 0,
+            refetchOnWindowFocus: true,
         },
     },
 })
@@ -23,4 +24,3 @@ ReactDOM.createRoot(document.getElementById('root')).render(
         </BrowserRouter>
     </React.StrictMode>
 )
-
