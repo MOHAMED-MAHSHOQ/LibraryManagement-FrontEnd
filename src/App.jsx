@@ -4,6 +4,7 @@ import Dashboard from './pages/Dashboard'
 import Students from './pages/Students'
 import Books from './pages/Books'
 import UnassignedShelf from './pages/UnassignedShelf'
+import Import from './pages/Import'
 
 export default function App() {
     return (
@@ -13,6 +14,7 @@ export default function App() {
                 <Route path="/students"   element={<Students />} />
                 <Route path="/books"      element={<Books />} />
                 <Route path="/unassigned" element={<UnassignedShelf />} />
+                <Route path="/import"     element={<Import />} />
             </Route>
         </Routes>
     )

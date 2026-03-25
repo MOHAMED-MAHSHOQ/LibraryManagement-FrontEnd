@@ -1,7 +1,9 @@
 import api from './axios'
 
-export const getStudents = () => {
-    return api.get('/students')
+export const getStudents = ({ page = 0, size = 20, sortBy = 'id', sortDir = 'asc' } = {}) => {
+    return api.get('/students', {
+        params: { page, size, sortBy, sortDir }
+    })
 }
 
 export const getStudentById = (id) => {

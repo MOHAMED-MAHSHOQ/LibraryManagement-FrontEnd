@@ -6,6 +6,7 @@ import {
     useUpdateStudent,
     useDeleteStudent,
 } from '../hooks/useStudents'
+import Pagination from "../components/Pagination.jsx";
 
 const emptyForm = {
     name: '',
@@ -20,11 +21,36 @@ export default function Students() {
     const [formData, setFormData]     = useState(emptyForm)
     const [editingId, setEditingId]   = useState(null)
     const [errors, setErrors]         = useState({})
+    // Pagination + sort state
+    const [page,    setPage]    = useState(0)
+    const [size,    setSize]    = useState(20)
+    const [sortBy,  setSortBy]  = useState('id')
+    const [sortDir, setSortDir] = useState('asc')
 
-    const { students, isLoading, isError, error } = useStudents()
+    const { students, totalElements, totalPages, isLoading, isError, error }
+        = useStudents({ page, size, sortBy, sortDir })
     const createStudent = useCreateStudent()
     const updateStudent = useUpdateStudent()
     const deleteStudent = useDeleteStudent()
+
+
+    // Sort column click handler
+    const handleSort = (column) => {
+        if (sortBy === column) {
+            setSortDir(prev => prev === 'asc' ? 'desc' : 'asc')
+        } else {
+            setSortBy(column)
+            setSortDir('asc')
+        }
+        setPage(0)
+        // reset to first page when sorting changes
+    }
+
+    // Sort indicator arrow
+    const sortArrow = (col) => {
+        if (sortBy !== col) return ' ↕'
+        return sortDir === 'asc' ? ' ↑' : ' ↓'
+    }
 
     const filtered = students.filter(s =>
         s.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -123,14 +149,20 @@ export default function Students() {
                 alignItems: 'center',
                 marginBottom: '24px',
             }}>
-                <div>
-                    <h1 style={{ fontSize: '22px', fontWeight: '600', color: '#fff' }}>
-                        Students
-                    </h1>
-                    <p style={{ fontSize: '13px', color: '#6b7280', marginTop: '4px' }}>
-                        {students.length} students total
-                    </p>
-                </div>
+                {/*<div>*/}
+                {/*    <h1 style={{ fontSize: '22px', fontWeight: '600', color: '#fff' }}>*/}
+                {/*        Students*/}
+                {/*    </h1>*/}
+                {/*    <p style={{ fontSize: '13px', color: '#6b7280', marginTop: '4px' }}>*/}
+                {/*        {students.length} students total*/}
+                {/*    </p>*/}
+                {/*</div>*/}
+
+                <p style={{ fontSize: '13px', color: '#6b7280', marginTop: '4px' }}>
+                    {totalElements} students total
+                </p>
+
+
                 <button
                     onClick={handleOpenAdd}
                     style={{
@@ -172,6 +204,24 @@ export default function Students() {
                 border: '1px solid #2a2a4e',
                 overflow: 'hidden',
             }}>
+                {/*<div style={{*/}
+                {/*    display: 'grid',*/}
+                {/*    gridTemplateColumns: '2fr 2fr 1fr 1fr 150px',*/}
+                {/*    padding: '12px 16px',*/}
+                {/*    borderBottom: '1px solid #2a2a4e',*/}
+                {/*    fontSize: '11px',*/}
+                {/*    color: '#6b7280',*/}
+                {/*    fontWeight: '600',*/}
+                {/*    textTransform: 'uppercase',*/}
+                {/*    letterSpacing: '0.5px',*/}
+                {/*}}>*/}
+                {/*    <span>Name</span>*/}
+                {/*    <span>Email</span>*/}
+                {/*    <span>Phone</span>*/}
+                {/*    <span>Department</span>*/}
+                {/*    <span>Actions</span>*/}
+                {/*</div>*/}
+
                 <div style={{
                     display: 'grid',
                     gridTemplateColumns: '2fr 2fr 1fr 1fr 150px',
@@ -183,12 +233,23 @@ export default function Students() {
                     textTransform: 'uppercase',
                     letterSpacing: '0.5px',
                 }}>
-                    <span>Name</span>
-                    <span>Email</span>
-                    <span>Phone</span>
-                    <span>Department</span>
+                    {[
+                        { label: 'Name',       col: 'name'       },
+                        { label: 'Email',      col: 'email'      },
+                        { label: 'Phone',      col: 'phone'      },
+                        { label: 'Department', col: 'department' },
+                    ].map(h => (
+                        <span
+                            key={h.col}
+                            onClick={() => handleSort(h.col)}
+                            style={{ cursor: 'pointer', userSelect: 'none' }}
+                        >
+      {h.label}{sortArrow(h.col)}
+    </span>
+                    ))}
                     <span>Actions</span>
                 </div>
+
 
                 {filtered.length === 0 ? (
                     <div style={{
@@ -263,6 +324,15 @@ export default function Students() {
                     ))
                 )}
             </div>
+
+            <Pagination
+                page={page}
+                totalPages={totalPages}
+                totalElements={totalElements}
+                size={size}
+                onPageChange={setPage}
+                onSizeChange={setSize}
+            />
 
             <Modal
                 isOpen={isModalOpen}

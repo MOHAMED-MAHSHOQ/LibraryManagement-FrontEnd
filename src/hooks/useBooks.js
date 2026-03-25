@@ -9,13 +9,30 @@ import {
     removeBookFromStudent,
 } from '../api/books'
 
-export function useBooks() {
+// export function useBooks() {
+//     const { data, isLoading, isError, error } = useQuery({
+//         queryKey: ['books'],
+//         queryFn: getBooks,
+//     })
+//     return {
+//         books: data || [],
+//         isLoading,
+//         isError,
+//         error,
+//     }
+// }
+
+export function useBooks({ page = 0, size = 20, sortBy = 'id', sortDir = 'asc' } = {}) {
     const { data, isLoading, isError, error } = useQuery({
-        queryKey: ['books'],
-        queryFn: getBooks,
+        queryKey: ['books', page, size, sortBy, sortDir],
+        queryFn: () => getBooks({ page, size, sortBy, sortDir }),
+        keepPreviousData: true,
     })
     return {
-        books: data || [],
+        books:         data?.content       || [],
+        totalElements: data?.totalElements || 0,
+        totalPages:    data?.totalPages    || 0,
+        currentPage:   data?.page          || 0,
         isLoading,
         isError,
         error,

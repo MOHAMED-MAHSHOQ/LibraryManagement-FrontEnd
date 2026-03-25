@@ -51,6 +51,10 @@ export default function Sidebar() {
                     Unassigned shelf
                 </NavLink>
 
+                <NavLink to="/import" style={navLinkStyle}>
+                    CSV Import
+                </NavLink>
+
             </nav>
 
             <div style={{

@@ -1,6 +1,10 @@
 import api from './axios'
 
-export const getBooks = () => api.get('/books')
+export const getBooks = ({ page = 0, size = 20, sortBy = 'id', sortDir = 'asc' } = {}) => {
+    return api.get('/books', {
+        params: { page, size, sortBy, sortDir }
+    })
+}
 
 export const getBookById = (id) => api.get(`/books/${id}`)
 
