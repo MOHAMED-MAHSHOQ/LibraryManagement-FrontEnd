@@ -1,22 +1,30 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
     getStudents,
+    searchStudents,
     getStudentById,
     createStudent,
     updateStudent,
     deleteStudent,
 } from '../api/students'
 
-export function useStudents({ page = 0, size = 20, sortBy = 'id', sortDir = 'asc' } = {}) {
+export function useStudents({ search = '', page = 0, size = 20, sortBy = 'id', sortDir = 'asc' } = {}) {
+    const isSearching = search.trim().length > 0;
+
     const { data, isLoading, isError, error } = useQuery({
-        queryKey: ['students', page, size, sortBy, sortDir],
-        // queryKey includes all params — different page = different cache entry
-        queryFn: () => getStudents({ page, size, sortBy, sortDir }),
+        // Add search to the queryKey so it refetches when search changes!
+        queryKey: ['students', page, size, sortBy, sortDir, search],
+
+        // Dynamically choose which API to call based on search state
+        queryFn: () => isSearching
+            ? searchStudents({ query: search, page, size })
+            : getStudents({ page, size, sortBy, sortDir }),
+
         keepPreviousData: true,
-        // keeps old data visible while next page loads — no flicker
     })
+
     return {
-        students:      data?.content     || [],
+        students:      data?.content       || [],
         totalElements: data?.totalElements || 0,
         totalPages:    data?.totalPages    || 0,
         currentPage:   data?.page          || 0,

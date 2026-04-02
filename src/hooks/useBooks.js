@@ -3,6 +3,7 @@ import {
     getBooks,
     getUnassignedBooks,
     createBook,
+    searchBooks,
     updateBook,
     deleteBook,
     assignBookToStudent,
@@ -22,10 +23,14 @@ import {
 //     }
 // }
 
-export function useBooks({ page = 0, size = 20, sortBy = 'id', sortDir = 'asc' } = {}) {
+export function useBooks({ search = '', page = 0, size = 20, sortBy = 'id', sortDir = 'asc' } = {}) {
+    const isSearching = search.trim().length > 0;
+
     const { data, isLoading, isError, error } = useQuery({
-        queryKey: ['books', page, size, sortBy, sortDir],
-        queryFn: () => getBooks({ page, size, sortBy, sortDir }),
+        queryKey: ['books', page, size, sortBy, sortDir, search],
+        queryFn: () => isSearching
+            ? searchBooks({ query: search, page, size })
+            : getBooks({ page, size, sortBy, sortDir }),
         keepPreviousData: true,
     })
     return {

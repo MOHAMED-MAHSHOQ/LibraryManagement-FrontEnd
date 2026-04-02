@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState,useEffect } from 'react'
 import Modal from '../components/Modal'
 import {
     useStudents,
@@ -17,6 +17,7 @@ const emptyForm = {
 
 export default function Students() {
     const [search, setSearch]         = useState('')
+    const [debouncedSearch, setDebouncedSearch] = useState('')
     const [isModalOpen, setIsModalOpen] = useState(false)
     const [formData, setFormData]     = useState(emptyForm)
     const [editingId, setEditingId]   = useState(null)
@@ -26,12 +27,26 @@ export default function Students() {
     const [size,    setSize]    = useState(20)
     const [sortBy,  setSortBy]  = useState('id')
     const [sortDir, setSortDir] = useState('asc')
+    //
+    // const { students, totalElements, totalPages, isLoading, isError, error }
+    //     = useStudents({ page, size, sortBy, sortDir })
 
     const { students, totalElements, totalPages, isLoading, isError, error }
-        = useStudents({ page, size, sortBy, sortDir })
+        = useStudents({ search: debouncedSearch, page, size, sortBy, sortDir })
     const createStudent = useCreateStudent()
     const updateStudent = useUpdateStudent()
     const deleteStudent = useDeleteStudent()
+
+
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            setDebouncedSearch(search);
+            setPage(0); // Always reset to page 1 when starting a new search
+        }, 500); // Waits 500ms after user stops typing
+
+        return () => clearTimeout(timer); // Cleanup
+    }, [search]);
+
 
 
     // Sort column click handler
@@ -52,10 +67,10 @@ export default function Students() {
         return sortDir === 'asc' ? ' ↑' : ' ↓'
     }
 
-    const filtered = students.filter(s =>
-        s.name.toLowerCase().includes(search.toLowerCase()) ||
-        s.department.toLowerCase().includes(search.toLowerCase())
-    )
+        // const filtered = students.filter(s =>
+        //     s.name.toLowerCase().includes(search.toLowerCase()) ||
+        //     s.department.toLowerCase().includes(search.toLowerCase())
+        // )
 
     const handleOpenAdd = () => {
         setFormData(emptyForm)
@@ -251,7 +266,7 @@ export default function Students() {
                 </div>
 
 
-                {filtered.length === 0 ? (
+                {students.length === 0 ? (
                     <div style={{
                         padding: '40px',
                         textAlign: 'center',
@@ -261,14 +276,14 @@ export default function Students() {
                         No students found
                     </div>
                 ) : (
-                    filtered.map((student, index) => (
+                    students.map((student, index) => (
                         <div
                             key={student.id}
                             style={{
                                 display: 'grid',
                                 gridTemplateColumns: '2fr 2fr 1fr 1fr 150px',
                                 padding: '14px 16px',
-                                borderBottom: index < filtered.length - 1
+                                borderBottom: index < students.length - 1
                                     ? '1px solid #2a2a4e' : 'none',
                                 fontSize: '13px',
                                 alignItems: 'center',

@@ -5,6 +5,11 @@ export const getBooks = ({ page = 0, size = 20, sortBy = 'id', sortDir = 'asc' }
         params: { page, size, sortBy, sortDir }
     })
 }
+export const searchBooks = ({ query, page = 0, size = 20 } = {}) => {
+    return api.get('/books/search', {
+        params: { query, page, size }
+    })
+}
 
 export const getBookById = (id) => api.get(`/books/${id}`)
 

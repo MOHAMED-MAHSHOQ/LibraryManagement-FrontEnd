@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState,useEffect } from 'react'
 import Modal from '../components/Modal'
 import Pagination from '../components/Pagination'
 import {
@@ -10,64 +10,82 @@ import {
     useRemoveBook,
 } from '../hooks/useBooks'
 import { useQuery } from '@tanstack/react-query'
-import { getStudents } from '../api/students'
+import { getStudents, searchStudents } from '../api/students'
 
 const emptyForm = { title: '', author: '', genre: '', isbn: '' }
-const GENRES = ['All', 'Computer Science', 'Mathematics', 'Physics', 'Chemistry', 'Biology', 'Science', 'CS', 'Maths']
+const GENRES = ['All', 'Computer Science', 'Mathematics', 'Physics',
+    'Chemistry', 'Biology', 'Science', 'CS', 'Maths']
 
 export default function Books() {
-    // ── list state ──────────────────────────────────────────────────
+
+    // ── books list state ─────────────────────────────────────────
     const [search,      setSearch]      = useState('')
+    const [debouncedSearch, setDebouncedSearch] = useState('')
     const [activeGenre, setActiveGenre] = useState('All')
     const [page,        setPage]        = useState(0)
     const [size,        setSize]        = useState(20)
     const [sortBy,      setSortBy]      = useState('id')
     const [sortDir,     setSortDir]     = useState('asc')
 
-    // ── form/modal state ─────────────────────────────────────────────
-    const [isModalOpen,   setIsModalOpen]   = useState(false)
-    const [isAssignOpen,  setIsAssignOpen]  = useState(false)
-    const [formData,      setFormData]      = useState(emptyForm)
-    const [editingId,     setEditingId]     = useState(null)
-    const [selectedBook,  setSelectedBook]  = useState(null)
-    const [errors,        setErrors]        = useState({})
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            setDebouncedSearch(search);
+            setPage(0);
+        }, 500);
+        return () => clearTimeout(timer);
+    }, [search]);
 
-    // ── assign modal search state ────────────────────────────────────
+    // ── add/edit modal state ─────────────────────────────────────
+    const [isModalOpen,  setIsModalOpen]  = useState(false)
+    const [formData,     setFormData]     = useState(emptyForm)
+    const [editingId,    setEditingId]    = useState(null)
+    const [errors,       setErrors]       = useState({})
+
+    // ── assign modal state ───────────────────────────────────────
+    const [isAssignOpen,     setIsAssignOpen]     = useState(false)
+    const [selectedBook,     setSelectedBook]     = useState(null)
+    const [selectedStudent,  setSelectedStudent]  = useState(null) // full student object
     const [studentSearch,    setStudentSearch]    = useState('')
     const [studentPage,      setStudentPage]      = useState(0)
-    const [selectedStudent,  setSelectedStudent]  = useState('')
 
-    // ── data ──────────────────────────────────────────────────────────
+    // ── books data ───────────────────────────────────────────────
     const { books, totalElements, totalPages, isLoading, isError, error }
-        = useBooks({ page, size, sortBy, sortDir })
+        = useBooks({ search: debouncedSearch, page, size, sortBy, sortDir })
 
-    // Students for assign modal — paginated with search via backend
-    // We fetch by name search if possible; fallback to page-based browsing
-    const { data: studentsData } = useQuery({
-        queryKey: ['students-assign', studentPage, studentSearch],
-        queryFn: () => getStudents({ page: studentPage, size: 20, sortBy: 'name', sortDir: 'asc' }),
-        enabled: isAssignOpen,
+    // ── students for assign modal ────────────────────────────────
+    // If search is typed → call /students/search (backend search across ALL 3000+)
+    // If no search → call /students with pagination
+    const isSearching = studentSearch.trim().length > 0
+
+    const { data: studentsData, isFetching: studentsFetching } = useQuery({
+        queryKey: ['students-assign-browse', studentPage],
+        queryFn:  () => getStudents({ page: studentPage, size: 20, sortBy: 'name', sortDir: 'asc' }),
+        enabled:  isAssignOpen && !isSearching,
         keepPreviousData: true,
     })
-    const assignStudents     = studentsData?.content       || []
-    const assignTotalPages   = studentsData?.totalPages    || 0
-    const assignTotalElements = studentsData?.totalElements || 0
 
-    // Client-side filter on the fetched page (fast for small pages)
-    const filteredAssignStudents = studentSearch.trim()
-        ? assignStudents.filter(s =>
-            s.name.toLowerCase().includes(studentSearch.toLowerCase()) ||
-            s.department.toLowerCase().includes(studentSearch.toLowerCase())
-        )
-        : assignStudents
+    const { data: searchData, isFetching: searchFetching } = useQuery({
+        queryKey: ['students-assign-search', studentSearch, studentPage],
+        queryFn:  () => searchStudents({ query: studentSearch.trim(), page: studentPage, size: 20 }),
+        enabled:  isAssignOpen && isSearching && studentSearch.trim().length >= 1,
+        keepPreviousData: true,
+    })
 
+    // pick the right data source
+    const activeData      = isSearching ? searchData      : studentsData
+    const isFetchingStudents = isSearching ? searchFetching : studentsFetching
+    const studentList     = activeData?.content       || []
+    const studentTotal    = activeData?.totalElements || 0
+    const studentTotalPages = activeData?.totalPages  || 0
+
+    // ── mutations ────────────────────────────────────────────────
     const createBook = useCreateBook()
     const updateBook = useUpdateBook()
     const deleteBook = useDeleteBook()
     const assignBook = useAssignBook()
     const removeBook = useRemoveBook()
 
-    // Sort
+    // ── sort ─────────────────────────────────────────────────────
     const handleSort = (col) => {
         if (sortBy === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
         else { setSortBy(col); setSortDir('asc') }
@@ -75,7 +93,7 @@ export default function Books() {
     }
     const arrow = (col) => sortBy !== col ? ' ↕' : sortDir === 'asc' ? ' ↑' : ' ↓'
 
-    // Handlers
+    // ── book modal handlers ──────────────────────────────────────
     const handleOpenAdd = () => {
         setFormData(emptyForm); setEditingId(null); setErrors({})
         setIsModalOpen(true)
@@ -84,17 +102,8 @@ export default function Books() {
         setFormData({ title: book.title, author: book.author, genre: book.genre, isbn: book.isbn })
         setEditingId(book.id); setErrors({}); setIsModalOpen(true)
     }
-    const handleOpenAssign = (book) => {
-        setSelectedBook(book); setSelectedStudent('')
-        setStudentSearch(''); setStudentPage(0)
-        setIsAssignOpen(true)
-    }
-    const handleClose = () => {
+    const handleCloseBook = () => {
         setIsModalOpen(false); setFormData(emptyForm); setEditingId(null); setErrors({})
-    }
-    const handleCloseAssign = () => {
-        setIsAssignOpen(false); setSelectedBook(null)
-        setSelectedStudent(''); setStudentSearch(''); setStudentPage(0)
     }
     const handleChange = (e) => {
         const { name, value } = e.target
@@ -107,25 +116,46 @@ export default function Books() {
         if (!formData.author.trim()) e.author = 'Author is required'
         if (!formData.genre.trim())  e.genre  = 'Genre is required'
         if (!formData.isbn.trim())   e.isbn   = 'ISBN is required'
-        else if (!/^ISBN-[0-9]{3,}$/.test(formData.isbn)) e.isbn = 'Format must be ISBN-001'
+        else if (!/^ISBN-[0-9]{3,}$/.test(formData.isbn)) e.isbn = 'Format: ISBN-101'
         setErrors(e)
         return Object.keys(e).length === 0
     }
     const handleSave = () => {
         if (!validate()) return
         if (editingId) {
-            updateBook.mutate({ id: editingId, data: formData }, { onSuccess: handleClose })
+            updateBook.mutate({ id: editingId, data: formData }, { onSuccess: handleCloseBook })
         } else {
-            createBook.mutate(formData, { onSuccess: handleClose })
+            createBook.mutate(formData, { onSuccess: handleCloseBook })
         }
     }
     const handleDelete = (id, title) => {
         if (window.confirm(`Delete book "${title}"?`)) deleteBook.mutate(id)
     }
+
+    // ── assign modal handlers ────────────────────────────────────
+    const handleOpenAssign = (book) => {
+        setSelectedBook(book)
+        setSelectedStudent(null)
+        setStudentSearch('')
+        setStudentPage(0)
+        setIsAssignOpen(true)
+    }
+    const handleCloseAssign = () => {
+        setIsAssignOpen(false)
+        setSelectedBook(null)
+        setSelectedStudent(null)
+        setStudentSearch('')
+        setStudentPage(0)
+    }
+    const handleStudentSearchChange = (e) => {
+        setStudentSearch(e.target.value)
+        setStudentPage(0)        // reset to page 1 on every new search
+        setSelectedStudent(null) // clear selection when search changes
+    }
     const handleAssignSave = () => {
         if (!selectedStudent) return
         assignBook.mutate(
-            { studentId: selectedStudent, bookId: selectedBook.id },
+            { studentId: selectedStudent.id, bookId: selectedBook.id },
             { onSuccess: handleCloseAssign }
         )
     }
@@ -137,43 +167,40 @@ export default function Books() {
     if (isLoading) return <div style={{ color: '#9ca3af', padding: '40px', textAlign: 'center' }}>Loading books...</div>
     if (isError)   return <div style={{ color: '#f87171', padding: '40px', textAlign: 'center' }}>Error: {error.message}</div>
 
-    // Client-side genre filter on current page
-    const filtered = books.filter(b =>
-        (activeGenre === 'All' || b.genre === activeGenre) &&
-        (b.title.toLowerCase().includes(search.toLowerCase()) ||
-            b.author.toLowerCase().includes(search.toLowerCase()))
-    )
+    // client-side filter on the current page only (for genre + title search)
+    // const filtered = books.filter(b =>
+    //     (activeGenre === 'All' || b.genre === activeGenre) &&
+    //     (b.title.toLowerCase().includes(search.toLowerCase()) ||
+    //         b.author.toLowerCase().includes(search.toLowerCase()))
+    // )
+
+    const filteredByGenre = activeGenre === 'All'
+        ? books
+        : books.filter(b => b.genre === activeGenre);
 
     return (
         <div>
-            {/* Header */}
+            {/* ── Header ── */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-                <p style={{ fontSize: '13px', color: '#6b7280' }}>
-                    {totalElements} books total
-                </p>
+                <p style={{ fontSize: '13px', color: '#6b7280' }}>{totalElements} books total</p>
                 <button onClick={handleOpenAdd} style={{
                     backgroundColor: '#4f46e5', color: '#fff', border: 'none',
                     borderRadius: '6px', padding: '8px 16px', fontSize: '13px',
                     cursor: 'pointer', fontWeight: '500',
-                }}>
-                    + Add Book
-                </button>
+                }}>+ Add Book</button>
             </div>
 
-            {/* Search */}
-            <input
-                type="text"
-                placeholder="Search by title or author on this page..."
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                style={{
-                    width: '100%', padding: '10px 14px', borderRadius: '6px',
-                    border: '1px solid #2a2a4e', backgroundColor: '#1a1a2e',
-                    color: '#ffffff', fontSize: '13px', marginBottom: '16px', outline: 'none',
-                }}
+            {/* ── Search ── */}
+            <input type="text" placeholder="Search title or author on this page..."
+                   value={search} onChange={e => setSearch(e.target.value)}
+                   style={{
+                       width: '100%', padding: '10px 14px', borderRadius: '6px',
+                       border: '1px solid #2a2a4e', backgroundColor: '#1a1a2e',
+                       color: '#fff', fontSize: '13px', marginBottom: '16px', outline: 'none',
+                   }}
             />
 
-            {/* Genre filter */}
+            {/* ── Genre filter ── */}
             <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', flexWrap: 'wrap' }}>
                 {GENRES.map(genre => (
                     <button key={genre} onClick={() => setActiveGenre(genre)} style={{
@@ -181,16 +208,12 @@ export default function Books() {
                         border: activeGenre === genre ? '1px solid #4f46e5' : '1px solid #2a2a4e',
                         backgroundColor: activeGenre === genre ? '#4f46e5' : 'transparent',
                         color: activeGenre === genre ? '#fff' : '#9ca3af',
-                        fontWeight: activeGenre === genre ? '500' : '400',
-                    }}>
-                        {genre}
-                    </button>
+                    }}>{genre}</button>
                 ))}
             </div>
 
-            {/* Table */}
+            {/* ── Table ── */}
             <div style={{ backgroundColor: '#1a1a2e', borderRadius: '8px', border: '1px solid #2a2a4e', overflow: 'hidden' }}>
-                {/* Header row */}
                 <div style={{
                     display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr 200px',
                     padding: '12px 16px', borderBottom: '1px solid #2a2a4e',
@@ -206,16 +229,16 @@ export default function Books() {
                     <span>Actions</span>
                 </div>
 
-                {filtered.length === 0 ? (
+                {filteredByGenre.length === 0 ? (
                     <div style={{ padding: '40px', textAlign: 'center', color: '#6b7280', fontSize: '13px' }}>
-                        No books found on this page
+                        No books found
                     </div>
                 ) : (
-                    filtered.map((book, index) => (
+                    filteredByGenre.map((book, index) => (
                         <div key={book.id} style={{
                             display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr 200px',
                             padding: '14px 16px',
-                            borderBottom: index < filtered.length - 1 ? '1px solid #2a2a4e' : 'none',
+                            borderBottom: index < filteredByGenre.length - 1 ? '1px solid #2a2a4e' : 'none',
                             fontSize: '13px', alignItems: 'center',
                         }}>
                             <div>
@@ -274,18 +297,17 @@ export default function Books() {
                 )}
             </div>
 
-            {/* Pagination */}
             <Pagination
-                page={page}
-                totalPages={totalPages}
-                totalElements={totalElements}
-                size={size}
-                onPageChange={setPage}
+                page={page} totalPages={totalPages} totalElements={totalElements}
+                size={size} onPageChange={setPage}
                 onSizeChange={(s) => { setSize(s); setPage(0) }}
             />
 
-            {/* ── Add/Edit Book Modal ── */}
-            <Modal isOpen={isModalOpen} onClose={handleClose} title={editingId ? 'Edit Book' : 'Add Book'}>
+            {/* ══════════════════════════════════════════
+                ADD / EDIT BOOK MODAL
+            ══════════════════════════════════════════ */}
+            <Modal isOpen={isModalOpen} onClose={handleCloseBook}
+                   title={editingId ? 'Edit Book' : 'Add Book'}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
                     {[
                         { label: 'Title',  name: 'title',  placeholder: 'eg. Clean Code' },
@@ -297,29 +319,34 @@ export default function Books() {
                             <label style={{ display: 'block', fontSize: '12px', color: '#9ca3af', marginBottom: '6px', fontWeight: '500' }}>
                                 {field.label} <span style={{ color: '#ef4444' }}>*</span>
                             </label>
-                            <input
-                                type="text" name={field.name} value={formData[field.name]}
-                                onChange={handleChange} placeholder={field.placeholder}
-                                style={{
-                                    width: '100%', padding: '10px 12px', borderRadius: '6px',
-                                    border: errors[field.name] ? '1px solid #ef4444' : '1px solid #2a2a4e',
-                                    backgroundColor: '#0f0f23', color: '#ffffff', fontSize: '13px', outline: 'none',
-                                }}
+                            <input type="text" name={field.name} value={formData[field.name]}
+                                   onChange={handleChange} placeholder={field.placeholder}
+                                   style={{
+                                       width: '100%', padding: '10px 12px', borderRadius: '6px',
+                                       border: errors[field.name] ? '1px solid #ef4444' : '1px solid #2a2a4e',
+                                       backgroundColor: '#0f0f23', color: '#fff', fontSize: '13px', outline: 'none',
+                                   }}
                             />
-                            {errors[field.name] && <p style={{ color: '#ef4444', fontSize: '11px', marginTop: '4px' }}>{errors[field.name]}</p>}
+                            {errors[field.name] && (
+                                <p style={{ color: '#ef4444', fontSize: '11px', marginTop: '4px' }}>
+                                    {errors[field.name]}
+                                </p>
+                            )}
                         </div>
                     ))}
                     <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '8px' }}>
-                        <button onClick={handleClose} style={{
+                        <button onClick={handleCloseBook} style={{
                             backgroundColor: 'transparent', border: '1px solid #2a2a4e',
-                            color: '#9ca3af', borderRadius: '6px', padding: '8px 16px', fontSize: '13px', cursor: 'pointer',
+                            color: '#9ca3af', borderRadius: '6px', padding: '8px 16px',
+                            fontSize: '13px', cursor: 'pointer',
                         }}>Cancel</button>
                         <button onClick={handleSave}
                                 disabled={createBook.isPending || updateBook.isPending}
                                 style={{
                                     backgroundColor: '#4f46e5', border: 'none', color: '#fff',
                                     borderRadius: '6px', padding: '8px 16px', fontSize: '13px',
-                                    cursor: 'pointer', opacity: (createBook.isPending || updateBook.isPending) ? 0.7 : 1,
+                                    cursor: 'pointer',
+                                    opacity: (createBook.isPending || updateBook.isPending) ? 0.7 : 1,
                                 }}>
                             {(createBook.isPending || updateBook.isPending) ? 'Saving...' : editingId ? 'Update' : 'Save'}
                         </button>
@@ -327,129 +354,167 @@ export default function Books() {
                 </div>
             </Modal>
 
-            {/* ── Assign Book Modal — with search + pagination ── */}
-            <Modal
-                isOpen={isAssignOpen}
-                onClose={handleCloseAssign}
-                title={`Assign "${selectedBook?.title}"`}
-            >
+            {/* ══════════════════════════════════════════
+                ASSIGN BOOK MODAL
+                - Search calls backend → searches ALL 3000+ students
+                - Browse uses pagination
+            ══════════════════════════════════════════ */}
+            <Modal isOpen={isAssignOpen} onClose={handleCloseAssign}
+                   title={`Assign "${selectedBook?.title}"`}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                    {/* Search bar */}
-                    <input
-                        type="text"
-                        placeholder="Search student by name or department..."
-                        value={studentSearch}
-                        onChange={e => { setStudentSearch(e.target.value); setStudentPage(0) }}
-                        style={{
-                            width: '100%', padding: '9px 12px', borderRadius: '6px',
-                            border: '1px solid #2a2a4e', backgroundColor: '#0f0f23',
-                            color: '#fff', fontSize: '13px', outline: 'none',
-                        }}
-                    />
+
+                    {/* Search input */}
+                    <div style={{ position: 'relative' }}>
+                        <input
+                            type="text"
+                            placeholder="Search by name, email or department..."
+                            value={studentSearch}
+                            onChange={handleStudentSearchChange}
+                            autoFocus
+                            style={{
+                                width: '100%', padding: '10px 36px 10px 12px',
+                                borderRadius: '6px', border: '1px solid #2a2a4e',
+                                backgroundColor: '#0f0f23', color: '#fff',
+                                fontSize: '13px', outline: 'none',
+                            }}
+                        />
+                        {/* Clear button */}
+                        {studentSearch && (
+                            <button onClick={() => { setStudentSearch(''); setStudentPage(0); setSelectedStudent(null) }}
+                                    style={{
+                                        position: 'absolute', right: '10px', top: '50%',
+                                        transform: 'translateY(-50%)',
+                                        background: 'none', border: 'none',
+                                        color: '#6b7280', cursor: 'pointer', fontSize: '16px',
+                                    }}>×</button>
+                        )}
+                    </div>
+
+                    {/* Search mode indicator */}
+                    {isSearching && (
+                        <div style={{ fontSize: '11px', color: '#818cf8' }}>
+                            🔍 Searching all {studentTotal > 0 ? studentTotal + ' matches across' : 'students in'} your database...
+                        </div>
+                    )}
 
                     {/* Student list */}
                     <div style={{
                         border: '1px solid #2a2a4e', borderRadius: '6px',
                         maxHeight: '280px', overflowY: 'auto', backgroundColor: '#0f0f23',
                     }}>
-                        {filteredAssignStudents.length === 0 ? (
+                        {isFetchingStudents ? (
                             <div style={{ padding: '20px', textAlign: 'center', color: '#6b7280', fontSize: '12px' }}>
-                                No students found
+                                Searching...
+                            </div>
+                        ) : studentList.length === 0 ? (
+                            <div style={{ padding: '24px', textAlign: 'center', color: '#6b7280', fontSize: '13px' }}>
+                                {isSearching
+                                    ? `No students found for "${studentSearch}"`
+                                    : 'No students available'}
                             </div>
                         ) : (
-                            filteredAssignStudents.map(student => (
-                                <div
-                                    key={student.id}
-                                    onClick={() => setSelectedStudent(String(student.id))}
-                                    style={{
-                                        padding: '10px 14px',
-                                        cursor: 'pointer',
-                                        borderBottom: '1px solid #1a1a2e',
-                                        backgroundColor: selectedStudent === String(student.id) ? '#2a2a4e' : 'transparent',
-                                        display: 'flex',
-                                        justifyContent: 'space-between',
-                                        alignItems: 'center',
-                                    }}
-                                >
-                                    <div>
-                                        <div style={{ fontSize: '13px', color: '#fff', fontWeight: selectedStudent === String(student.id) ? '600' : '400' }}>
-                                            {student.name}
+                            studentList.map(student => {
+                                const isSelected = selectedStudent?.id === student.id
+                                return (
+                                    <div key={student.id} onClick={() => setSelectedStudent(isSelected ? null : student)}
+                                         style={{
+                                             padding: '10px 14px', cursor: 'pointer',
+                                             borderBottom: '1px solid #1a1a2e',
+                                             backgroundColor: isSelected ? '#2a2a4e' : 'transparent',
+                                             display: 'flex', justifyContent: 'space-between',
+                                             alignItems: 'center',
+                                             transition: 'background-color 0.1s',
+                                         }}>
+                                        <div>
+                                            <div style={{
+                                                fontSize: '13px', color: '#fff',
+                                                fontWeight: isSelected ? '600' : '400',
+                                            }}>
+                                                {student.name}
+                                            </div>
+                                            <div style={{ fontSize: '11px', color: '#6b7280', marginTop: '2px' }}>
+                                                {student.department} · {student.email}
+                                            </div>
                                         </div>
-                                        <div style={{ fontSize: '11px', color: '#6b7280', marginTop: '1px' }}>
-                                            {student.department}
-                                        </div>
+                                        {isSelected && (
+                                            <span style={{
+                                                color: '#4ade80', fontSize: '18px',
+                                                flexShrink: 0, marginLeft: '8px',
+                                            }}>✓</span>
+                                        )}
                                     </div>
-                                    {selectedStudent === String(student.id) && (
-                                        <span style={{ color: '#4ade80', fontSize: '16px' }}>✓</span>
-                                    )}
-                                </div>
-                            ))
+                                )
+                            })
                         )}
                     </div>
 
-                    {/* Pagination for assign modal */}
-                    {!studentSearch.trim() && assignTotalPages > 1 && (
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '12px', color: '#6b7280' }}>
+                    {/* Pagination — shown in both search and browse modes */}
+                    {studentTotalPages > 1 && (
+                        <div style={{
+                            display: 'flex', alignItems: 'center',
+                            justifyContent: 'space-between', fontSize: '12px', color: '#6b7280',
+                        }}>
                             <span>
-                                Page {studentPage + 1} of {assignTotalPages} ({assignTotalElements} students)
+                                Page {studentPage + 1} of {studentTotalPages}
+                                {' '}({studentTotal} {isSearching ? 'results' : 'students'})
                             </span>
                             <div style={{ display: 'flex', gap: '6px' }}>
                                 <button
                                     onClick={() => setStudentPage(p => Math.max(0, p - 1))}
                                     disabled={studentPage === 0}
                                     style={{
-                                        padding: '4px 10px', borderRadius: '4px',
+                                        padding: '4px 12px', borderRadius: '4px',
                                         border: '1px solid #2a2a4e', backgroundColor: 'transparent',
                                         color: studentPage === 0 ? '#374151' : '#9ca3af',
-                                        cursor: studentPage === 0 ? 'not-allowed' : 'pointer', fontSize: '12px',
-                                    }}
-                                >‹ Prev</button>
+                                        cursor: studentPage === 0 ? 'not-allowed' : 'pointer',
+                                        fontSize: '12px',
+                                    }}>‹ Prev</button>
                                 <button
-                                    onClick={() => setStudentPage(p => Math.min(assignTotalPages - 1, p + 1))}
-                                    disabled={studentPage >= assignTotalPages - 1}
+                                    onClick={() => setStudentPage(p => Math.min(studentTotalPages - 1, p + 1))}
+                                    disabled={studentPage >= studentTotalPages - 1}
                                     style={{
-                                        padding: '4px 10px', borderRadius: '4px',
+                                        padding: '4px 12px', borderRadius: '4px',
                                         border: '1px solid #2a2a4e', backgroundColor: 'transparent',
-                                        color: studentPage >= assignTotalPages - 1 ? '#374151' : '#9ca3af',
-                                        cursor: studentPage >= assignTotalPages - 1 ? 'not-allowed' : 'pointer', fontSize: '12px',
-                                    }}
-                                >Next ›</button>
+                                        color: studentPage >= studentTotalPages - 1 ? '#374151' : '#9ca3af',
+                                        cursor: studentPage >= studentTotalPages - 1 ? 'not-allowed' : 'pointer',
+                                        fontSize: '12px',
+                                    }}>Next ›</button>
                             </div>
                         </div>
                     )}
 
-                    {studentSearch.trim() && (
-                        <div style={{ fontSize: '11px', color: '#6b7280', textAlign: 'center' }}>
-                            Showing matches from current page · clear search to browse all
+                    {/* Selected student confirmation bar */}
+                    {selectedStudent && (
+                        <div style={{
+                            padding: '10px 14px', backgroundColor: '#14532d',
+                            borderRadius: '6px', fontSize: '12px', color: '#4ade80',
+                            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                        }}>
+                            <span>✓ Selected: <strong>{selectedStudent.name}</strong> — {selectedStudent.department}</span>
+                            <button onClick={() => setSelectedStudent(null)}
+                                    style={{ background: 'none', border: 'none', color: '#4ade80', cursor: 'pointer', fontSize: '14px' }}>
+                                ×
+                            </button>
                         </div>
                     )}
 
-                    {/* Selected student indicator */}
-                    {selectedStudent && (() => {
-                        const s = filteredAssignStudents.find(x => String(x.id) === selectedStudent)
-                        return s ? (
-                            <div style={{
-                                padding: '8px 12px', backgroundColor: '#14532d', borderRadius: '6px',
-                                fontSize: '12px', color: '#4ade80',
-                            }}>
-                                ✓ Selected: {s.name} — {s.department}
-                            </div>
-                        ) : null
-                    })()}
-
+                    {/* Action buttons */}
                     <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
                         <button onClick={handleCloseAssign} style={{
                             backgroundColor: 'transparent', border: '1px solid #2a2a4e',
-                            color: '#9ca3af', borderRadius: '6px', padding: '8px 16px', fontSize: '13px', cursor: 'pointer',
+                            color: '#9ca3af', borderRadius: '6px', padding: '8px 16px',
+                            fontSize: '13px', cursor: 'pointer',
                         }}>Cancel</button>
                         <button onClick={handleAssignSave}
                                 disabled={!selectedStudent || assignBook.isPending}
                                 style={{
                                     backgroundColor: selectedStudent ? '#059669' : '#1a2e25',
-                                    border: 'none', color: selectedStudent ? '#fff' : '#6b7280',
-                                    borderRadius: '6px', padding: '8px 16px', fontSize: '13px',
+                                    border: 'none',
+                                    color: selectedStudent ? '#fff' : '#4b5563',
+                                    borderRadius: '6px', padding: '8px 20px', fontSize: '13px',
                                     cursor: !selectedStudent || assignBook.isPending ? 'not-allowed' : 'pointer',
                                     opacity: assignBook.isPending ? 0.7 : 1,
+                                    fontWeight: '500',
                                 }}>
                             {assignBook.isPending ? 'Assigning...' : 'Assign'}
                         </button>

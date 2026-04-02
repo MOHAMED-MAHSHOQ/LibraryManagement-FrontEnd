@@ -6,6 +6,12 @@ export const getStudents = ({ page = 0, size = 20, sortBy = 'id', sortDir = 'asc
     })
 }
 
+export const searchStudents = ({ query, page = 0, size = 20 } = {}) => {
+    return api.get('/students/search', {
+        params: { query, page, size }
+    })
+}
+
 export const getStudentById = (id) => {
     return api.get(`/students/${id}`)
 }
@@ -29,4 +35,3 @@ export const assignBook = (studentId, bookId) => {
 export const removeBook = (studentId, bookId) => {
     return api.delete(`/students/${studentId}/books/${bookId}`)
 }
-
